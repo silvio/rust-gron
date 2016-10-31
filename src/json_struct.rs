@@ -2,9 +2,17 @@ use std::io::{self, Write};
 use std::iter::Enumerate;
 use std::collections::btree_map::Iter as MapIter;
 use std::slice::Iter as VecIter;
+use std::str::FromStr;
+use rustc_serialize;
+use rustc_serialize::Encodable;
 
+use rustc_serialize::json::Json;
 use serde_json::value::Value;
 
+pub enum JsonValue {
+    RCJson(Json),
+    SerdeValue(Value),
+}
 
 enum StackItem<'a> {
     MapIter(MapIter<'a, String, Value>),
@@ -37,7 +45,7 @@ enum StackItem<'a> {
 /// # }
 ///
 /// ```
-pub fn json_to_gron<W: Write>(out: &mut W, prefix: &str, json: &Value)
+pub fn json_to_gron<W: Write>(out: &mut W, prefix: &str, json: &JsonValue)
     -> io::Result<()>
 {
     use self::StackItem::*;
@@ -45,7 +53,18 @@ pub fn json_to_gron<W: Write>(out: &mut W, prefix: &str, json: &Value)
     let mut stack = Vec::with_capacity(8);
     let mut namebuf = String::with_capacity(100);
     namebuf.push_str(prefix);
-    match *json {
+
+    let json = json.clone();
+
+    // Internally we use rustc_serialize
+    let json_extracted = match *json {
+        JsonValue::SerdeValue(ref val) => val,
+        JsonValue::RCJson(ref val) => {
+            &Value::from_str(&rustc_serialize::json::encode(val).unwrap()).unwrap()
+        },
+    };
+
+    match *json_extracted {
         Value::I64(value) => try!(writeln!(out, "{} = {}", namebuf, value)),
         Value::U64(value) => try!(writeln!(out, "{} = {}", namebuf, value)),
         Value::F64(value) => try!(writeln!(out, "{} = {}", namebuf, value)),
